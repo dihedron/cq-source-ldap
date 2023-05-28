@@ -10,9 +10,11 @@ spec:
   destinations:
     - sqlite
   spec:
-    file: ./test.csv
-    format: csv
-    separator: ","
+    endpoint: ldap://ldap.example.com:389
+    username: "cn=read-only-admin,dc=example,dc=com"
+    password: mypassword
+    searchfilter: 
+    searchscope: 
     table: 
       name: T1
       filter: _.color startsWith 'b'

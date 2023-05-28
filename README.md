@@ -1,7 +1,7 @@
 # CloudQuery LDAP Source Plugin
 
-[![test](https://github.com/github.com/dihedron/cq-source-openstack/actions/workflows/test.yaml/badge.svg)](https://github.com/github.com/dihedron/cq-source-openstack/actions/workflows/test.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/github.com/dihedron/cq-source-openstack)](https://goreportcard.com/report/github.com/github.com/dihedron/cq-source-openstack)
+[![test](https://github.com/github.com/dihedron/cq-source-ldap/actions/workflows/test.yaml/badge.svg)](https://github.com/github.com/dihedron/cq-source-ldap/actions/workflows/test.yaml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/github.com/dihedron/cq-source-ldap)](https://goreportcard.com/report/github.com/github.com/dihedron/cq-source-ldap)
 
 A local file source plugin for CloudQuery that loads data from an LDAP server to any database, data warehouse or data lake supported by [CloudQuery](https://www.cloudquery.io/), such as PostgreSQL, BigQuery, Athena, and many more.
 
