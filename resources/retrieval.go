@@ -69,7 +69,8 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 				},
 			}
 			for _, attribute := range result.Attributes {
-				entry.Attributes[strings.ToLower(attribute.Name)] = attribute.Values
+				//entry.Attributes[strings.ToLower(attribute.Name)] = attribute.Values
+				entry.Attributes[attribute.Name] = attribute.Values
 			}
 
 			accepted := true
