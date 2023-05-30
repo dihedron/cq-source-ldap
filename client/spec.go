@@ -15,6 +15,8 @@ type Column struct {
 	NotNull     bool               `json:"notnull,omitempty" yaml:"notnull,omitempty"`
 	Transform   *string            `json:"transform,omitempty" yaml:"transform,omitempty"`
 	Template    *template.Template `json:"-" yaml:"-"`
+
+	// Attribute   string             `json:"attribute,omitempty" yaml:"attribute,omitempty"`
 }
 
 type Table struct {
@@ -25,11 +27,17 @@ type Table struct {
 	Columns     []*Column   `json:"columns,omitempty" yaml:"columns,omitempty"`
 }
 type Spec struct {
-	Endpoint     string  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	Username     string  `json:"username,omitempty" yaml:"username,omitempty"`
-	Password     string  `json:"password,omitempty" yaml:"password,omitempty"`
-	SearchFilter string  `json:"searchfilter,omitempty" yaml:"searchfilter,omitempty"`
-	SearchScope  *string `json:"searchscope,omitempty" yaml:"searchscope,omitempty"`
-	Table        Table   `json:"table,omitempty" yaml:"table,omitempty"`
-	Relations    []Table `json:"relations,omitempty" yaml:"relations,omitempty"`
+	Endpoint  string  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Username  string  `json:"username,omitempty" yaml:"username,omitempty"`
+	Password  string  `json:"password,omitempty" yaml:"password,omitempty"`
+	SkipTLS   bool    `json:"skiptls,omitempty" yaml:"skiptls,omitempty"`
+	Query     Query   `json:"query,omitempty" yaml:"query,omitempty"`
+	Table     Table   `json:"table,omitempty" yaml:"table,omitempty"`
+	Relations []Table `json:"relations,omitempty" yaml:"relations,omitempty"`
+}
+
+type Query struct {
+	BaseDN string  `json:"basedn,omitempty" yaml:"basedn,omitempty"`
+	Filter string  `json:"filter,omitempty" yaml:"filter,omitempty"`
+	Scope  *string `json:"scope,omitempty" yaml:"scope,omitempty"`
 }

@@ -4,13 +4,19 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"reflect"
+	"strings"
 
 	"github.com/antonmedv/expr"
 	"github.com/cloudquery/plugin-sdk/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-source-ldap/client"
+	"github.com/go-ldap/ldap/v3"
 )
+
+type Entry struct {
+	DN         string              `json:"dn" yaml:"dn"`
+	Attributes map[string][]string `json:"attributes" yaml:"attributes"`
+}
 
 // fetchTableData reads the main table's data by reading it from the input file and
 // unmarshallilng it into a set of rows using format-specific mechanisms, then
@@ -21,151 +27,81 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)
-
-		// rows := []map[string]any{}
 		client.Logger.Debug().Str("table", table.Name).Msg("fetching data...")
 
-		/*
-			switch strings.ToLower(client.Specs.Format) {
-			case "json":
-				data, err := os.ReadFile(client.Specs.File)
-				if err != nil {
-					client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error reading input file")
-					return fmt.Errorf("error reading input file %q: %w", client.Specs.File, err)
-				}
-				client.Logger.Debug().Str("file", client.Specs.File).Msg("input file read")
-				if err := json.Unmarshal(data, &rows); err != nil {
-					client.Logger.Error().Err(err).Msg("error unmarshalling data from JSON")
-					return fmt.Errorf("error unmarshalling data from JSON: %w", err)
-				}
-			case "yaml", "yml":
-				data, err := os.ReadFile(client.Specs.File)
-				if err != nil {
-					client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error reading input file")
-					return fmt.Errorf("error reading input file %q: %w", client.Specs.File, err)
-				}
-				client.Logger.Debug().Str("file", client.Specs.File).Msg("input file read")
-				if err := yaml.Unmarshal(data, &rows); err != nil {
-					client.Logger.Error().Err(err).Msg("error unmarshalling data from YAML")
-					return fmt.Errorf("error unmarshalling data from YAML: %w", err)
-				}
-			case "csv":
-				data, err := os.ReadFile(client.Specs.File)
-				if err != nil {
-					client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error reading input file")
-					return fmt.Errorf("error reading input file %q: %w", client.Specs.File, err)
-				}
-				client.Logger.Debug().Str("file", client.Specs.File).Msg("input file read")
-				if client.Specs.Separator == nil {
-					client.Specs.Separator = pointer.To(",")
-				}
-				scanner := bufio.NewScanner(bytes.NewReader(data))
-				first := true
-				var keys []string
-				for scanner.Scan() {
-					line := scanner.Text()
-					client.Logger.Debug().Str("line", line).Msg("read line from input file")
-					if first {
-						first = false
-						keys = strings.Split(line, *client.Specs.Separator)
-					} else {
-						values := strings.Split(line, *client.Specs.Separator)
-						if len(values) >= len(keys) {
-							row := map[string]any{}
-							for i := 0; i < len(keys); i++ {
-								for _, column := range client.Specs.Table.Columns {
-
-									if keys[i] == column.Name {
-										row[client.Specs.Table.Columns[i].Name] = values[i]
-									}
-								}
-							}
-							rows = append(rows, row)
-						} else {
-							client.Logger.Warn().Str("file", client.Specs.File).Str("line", line).Int("expected", len(keys)).Int("actual", len(values)).Msg("invalid number of columns")
-						}
-					}
-				}
-			case "xsl", "xlsx", "excel":
-				xls, err := excelize.OpenFile(client.Specs.File)
-				if err != nil {
-					client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error reading input file")
-					return fmt.Errorf("error reading input file %q: %w", client.Specs.File, err)
-				}
-				defer func() {
-					if err := xls.Close(); err != nil {
-						client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error reading input file")
-					}
-				}()
-				// get all the rows in the requested (or the active) sheet
-				if len(client.Specs.Sheets) == 0 {
-					// get the currently active sheet in the file
-					client.Specs.Sheets = []string{xls.GetSheetName(xls.GetActiveSheetIndex())}
-				}
-				for _, sheet := range client.Specs.Sheets {
-					client.Logger.Debug().Str("sheet", sheet).Msg("getting data from sheet")
-					xlsrows, err := xls.GetRows(sheet)
-					if err != nil {
-						client.Logger.Error().Err(err).Str("file", client.Specs.File).Msg("error getting rows")
-						return fmt.Errorf("error getting rows from input file %q: %w", client.Specs.File, err)
-					}
-
-					var keys []string
-					first := true
-					for _, xlsrow := range xlsrows {
-						if first {
-							first = false
-							keys = xlsrow
-						} else {
-							values := xlsrow
-							row := map[string]any{}
-							for i := 0; i < len(keys); i++ {
-								if i < len(values) {
-									// XLSX rows can be sparse, in which case all TRAILING empty cells are removed
-									// from the returned slice; empty cells in the middle are still valid
-									row[keys[i]] = values[i]
-								} else {
-									row[keys[i]] = nil
-								}
-							}
-							rows = append(rows, row)
-						}
-					}
-				}
+		baseDN := client.Specs.Query.BaseDN // "DC=example,DC=com"
+		filter := client.Specs.Query.Filter // "(CN=A1234567)"
+		scope := ldap.ScopeWholeSubtree
+		if client.Specs.Query.Scope != nil {
+			switch strings.TrimSpace(strings.ToLower(*client.Specs.Query.Scope)) {
+			case "base":
+				scope = ldap.ScopeBaseObject
 			default:
-				client.Logger.Error().Str("format", client.Specs.Format).Msg("unsupported format")
-				return fmt.Errorf("unsupported format: %q", client.Specs.Format)
+				scope = ldap.ScopeWholeSubtree
+			}
+		}
+
+		// prepare the set of attributes (columns) to retrieve
+		attributes := []string{}
+		for _, c := range table.Columns {
+			attributes = append(attributes, c.Name)
+		}
+		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, filter, attributes, []ldap.Control{})
+
+		results, err := client.Client.Search(request)
+		if err != nil {
+			client.Logger.Error().Err(err).Msg("error querying LDAP server")
+			return fmt.Errorf("failed to query LDAP: %w", err)
+		}
+
+		client.Logger.Debug().Int("entries", len(results.Entries)).Msg("query complete")
+
+		for _, result := range results.Entries {
+			result := result
+
+			// transform the entry into a map
+			entry := &Entry{
+				DN: result.DN,
+				Attributes: map[string][]string{
+					"dn": {
+						result.DN,
+					},
+				},
+			}
+			for _, attribute := range result.Attributes {
+				entry.Attributes[strings.ToLower(attribute.Name)] = attribute.Values
 			}
 
-			for _, row := range rows {
-				accepted := true
-				if client.Specs.Table.Evaluator != nil {
-					accepted = false
-					env := map[string]any{
-						"_": row,
-					}
-
-					if output, err := expr.Run(client.Specs.Table.Evaluator, env); err != nil {
-						client.Logger.Error().Err(err).Msg("error running evaluator")
-					} else {
-						client.Logger.Debug().Any("output", output).Msg("received output")
-						accepted = output.(bool)
-					}
+			accepted := true
+			if client.Specs.Table.Evaluator != nil {
+				accepted = false
+				env := map[string]any{
+					"_": entry,
 				}
 
-				if accepted {
-					client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(row)).Msg("accepting row")
-					res <- row
+				if output, err := expr.Run(client.Specs.Table.Evaluator, env); err != nil {
+					client.Logger.Error().Err(err).Msg("error running evaluator")
 				} else {
-					client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(row)).Msg("rejecting row")
+					client.Logger.Debug().Any("output", output).Msg("received output")
+					accepted = output.(bool)
 				}
 			}
-		*/
+
+			if accepted {
+				//client.Logger.Debug().Str("filter", *table.Filter).Str("entry", format.ToJSON(entry)).Msg("accepting entry")
+				client.Logger.Debug().Str("entry", format.ToJSON(entry)).Msg("accepting entry")
+				res <- entry
+			} else {
+				//client.Logger.Debug().Str("filter", *table.Filter).Str("entry", format.ToJSON(entry)).Msg("rejecting entry")
+				client.Logger.Debug().Str("entry", format.ToJSON(entry)).Msg("rejecting entry")
+			}
+		}
+
 		return nil
 	}
 }
 
-func fetchRelationData(table *client.Table) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchRelationData(table *client.Table, attributes map[string]string) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)
@@ -181,19 +117,6 @@ func fetchRelationData(table *client.Table) func(ctx context.Context, meta schem
 			accepted = false
 			env := map[string]any{
 				"_": row,
-				// // custom string manipulation functions here
-				// "toUpper":    strings.ToUpper,
-				// "toLower":    strings.ToLower,
-				// "trimSpace":  strings.TrimSpace,
-				// "trimLeft":   strings.TrimLeft,
-				// "trimRight":  strings.TrimRight,
-				// "trimBoth":   strings.Trim,
-				// "trimPrefix": strings.TrimPrefix,
-				// "trimSuffix": strings.TrimSuffix,
-				// "replace":    strings.Replace,
-				// "replaceAll": strings.ReplaceAll,
-				// "split":      strings.Split,
-				// "repeat":     strings.Repeat,
 			}
 
 			if output, err := expr.Run(table.Evaluator, env); err != nil {
@@ -221,14 +144,16 @@ func fetchRelationData(table *client.Table) func(ctx context.Context, meta schem
 
 // fetchColumn picks the value under the right key from the map[string]any
 // and sets it into the resource being returned to CloudQuery.
-func fetchColumn(table *client.Table) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
+func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 		client := meta.(*client.Client)
-		client.Logger.Debug().Str("table", table.Name).Msg("retrieving column for table")
+		entry := resource.Item.(*Entry)
 		// client.Logger.Debug().Str("resource", format.ToJSON(resource)).Str("column", format.ToJSON(c)).Str("item type", fmt.Sprintf("%T", resource.Item)).Msg("fetching column...")
-		row := resource.Item.(map[string]any)
-		value := row[c.Name]
+
+		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name). /*.Str("attribute", attribute)*/ Str("entry", format.ToJSON(entry)).Msg("retrieving column for table")
+
+		value := strings.Join(entry.Attributes[c.Name], ",")
 		client.Logger.Debug().Str("value", fmt.Sprintf("%v", value)).Str("type", fmt.Sprintf("%T", value)).Msg("checking value type")
 
 		// now apply the transform if it is available
@@ -237,18 +162,18 @@ func fetchColumn(table *client.Table) func(ctx context.Context, meta schema.Clie
 				client.Logger.Debug().Msg("applying transform...")
 				var buffer bytes.Buffer
 				target := struct {
-					Name  string
-					Value any
-					Type  schema.ValueType
-					Row   map[string]any
+					Name       string
+					Value      any
+					Type       schema.ValueType
+					Attributes map[string][]string
 				}{
-					Name:  c.Name,
-					Value: value,
-					Type:  c.Type,
-					Row:   row,
+					Name:       c.Name,
+					Value:      value,
+					Type:       c.Type,
+					Attributes: entry.Attributes,
 				}
 				if err := spec.Template.Execute(&buffer, target); err != nil {
-					client.Logger.Error().Err(err).Any("value", value).Str("transform", *spec.Transform).Any("row", row).Msg("error applying transform")
+					client.Logger.Error().Err(err).Any("value", value).Str("transform", *spec.Transform).Any("entry", entry).Msg("error applying transform")
 					return err
 				}
 				value = buffer.String()
@@ -258,33 +183,33 @@ func fetchColumn(table *client.Table) func(ctx context.Context, meta schema.Clie
 
 		client.Logger.Debug().Any("value", value).Msg("after transform...")
 
-		if value == nil {
-			client.Logger.Warn().Msg("value is nil")
-			if c.CreationOptions.NotNull {
-				err := fmt.Errorf("invalid nil value for non-nullable column %s", c.Name)
-				client.Logger.Error().Err(err).Str("name", c.Name).Msg("error setting column")
-				return err
-			}
-		} else {
-			client.Logger.Warn().Msg("value is NOT nil")
-			if reflect.ValueOf(value).IsZero() {
-				if !c.CreationOptions.NotNull {
-					// column is nullable, let's null it
-					client.Logger.Warn().Str("name", c.Name).Msg("nulling column value")
-					value = nil
-				} else {
-					client.Logger.Warn().Msg("set default value for type")
-					switch c.Type {
-					case schema.TypeBool:
-						value = false
-					case schema.TypeInt:
-						value = 0
-					case schema.TypeString:
-						value = ""
-					}
-				}
-			}
-		}
+		// if value == nil {
+		// 	client.Logger.Warn().Msg("value is nil")
+		// 	if c.CreationOptions.NotNull {
+		// 		err := fmt.Errorf("invalid nil value for non-nullable column %s", c.Name)
+		// 		client.Logger.Error().Err(err).Str("name", c.Name).Msg("error setting column")
+		// 		return err
+		// 	}
+		// } else {
+		// 	client.Logger.Warn().Msg("value is NOT nil")
+		// 	if reflect.ValueOf(value).IsZero() {
+		// 		if !c.CreationOptions.NotNull {
+		// 			// column is nullable, let's null it
+		// 			client.Logger.Warn().Str("name", c.Name).Msg("nulling column value")
+		// 			value = nil
+		// 		} else {
+		// 			client.Logger.Warn().Msg("set default value for type")
+		// 			switch c.Type {
+		// 			case schema.TypeBool:
+		// 				value = false
+		// 			case schema.TypeInt:
+		// 				value = 0
+		// 			case schema.TypeString:
+		// 				value = ""
+		// 			}
+		// 		}
+		// 	}
+		// }
 		// in XLSX some values may be null, in which case we must
 		// be sure we're not asking cloudQuery to parse invalid values
 		return resource.Set(c.Name, value)

@@ -21,6 +21,7 @@ _test/.cq
 _test/cloudquery
 _test/*.log
 _test/*.sqlite
+_test/.env
 
 .DS_Store
 

@@ -28,7 +28,7 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 	// for the main table
 	tableColumns, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table)
 	if err != nil {
-		client.Logger.Error().Err(err).Str("table", client.Specs.Table.Name).Msg("error getting table column schema")
+		client.Logger.Error().Err(err).Str("table", client.Specs.Table.Name).Msg("error getting table column schema and attributes")
 		return nil, err
 	}
 
@@ -38,6 +38,8 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 	for _, relation := range client.Specs.Relations {
 
 		relation := relation
+
+		attributes := map[string]string{}
 
 		relationColumns, err := buildTableColumnsSchema(client.Logger, &relation)
 		if err != nil {
@@ -54,7 +56,7 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 		relations = append(relations, &schema.Table{
 			Name:        relation.Name,
 			Description: *relation.Description,
-			Resolver:    fetchRelationData(&relation),
+			Resolver:    fetchRelationData(&relation, attributes),
 			Columns:     relationColumns,
 		})
 	}
@@ -93,6 +95,9 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 	for _, c := range table.Columns {
 		c := c
 		logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("adding column")
+
+		// add the LDAP attribute mapping
+		// attributes[c.Name] = c.Attribute
 
 		// prepare the template for value transformation if there is a transform
 		if c.Transform != nil {
@@ -161,6 +166,6 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		}
 	}
 
-	logger.Debug().Str("table", table.Name).Str("columns", format.ToJSON(columns)).Msg("returning columns schema")
+	logger.Debug().Str("table", table.Name).Str("columns", format.ToJSON(columns)).Msg("returning columns schema and attributes map")
 	return columns, nil
 }

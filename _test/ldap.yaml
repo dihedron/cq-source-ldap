@@ -1,7 +1,7 @@
 ---
 kind: source
 spec:
-  name: test1
+  name: ldap_test
   registry: local
   path: /data/workspaces/gomods/cq-source-ldap/dist/cq-source-ldap_linux_amd64_v1/cq-source-ldap
   version: v0.1.0
@@ -10,89 +10,86 @@ spec:
   destinations:
     - sqlite
   spec:
-    endpoint: ldap://ldap.example.com:389
-    username: "cn=read-only-admin,dc=example,dc=com"
-    password: mypassword
-    searchfilter: 
-    searchscope: 
+    endpoint: ${LDAP_ENDPOINT} # "ldap://ldap.example.com:389"
+    username: ${LDAP_USERNAME} # "cn=read-only-admin,dc=example,dc=com"
+    password: ${LDAP_PASSWORD} # "myP4$sW0Rd!"
+    skiptls: true
+    query:
+      basedn: ${LDAP_BASEDN}
+      filter: (&(objectclass=organizationalPerson)(cn=D*))
+      scope: subtree
     table: 
-      name: T1
-      filter: _.color startsWith 'b'
+      name: USERS
+      #filter: _.attributes.cn startsWith 'D'
       columns:
-        - name: color
+        - name: dn
           type: string
           key: true
           unique: true
           notnull: true
-        - name: value
+        - name: cn
           type: string
-          unique: true
-          notnull: true
-        - name: optimized
-          type: boolean
-          notnull: true
-        - name: count
-          type: integer
-          notnull: true
-    relations:
-      - name: T1_UPPER
-        filter: _.color startsWith 'blu'
-        columns:
-          - name: upper_color
-            type: string
-            key: true
-            unique: true
-            notnull: true
-            transform: "{{index .Row \"color\" | toString | upper}}"
-          - name: upper_value
-            type: string
-            transform: "{{index .Row \"value\" | toString | upper}}"
-      - name: T1_UPPER
-        filter: _.color startsWith 'bla'
-        columns:
-          - name: upper_color
-            type: string
-            key: true
-            unique: true
-            notnull: true
-            transform: "{{index .Row \"color\" | toString | upper}}"
-          - name: upper_value
-            type: string
-            transform: "{{index .Row \"value\" | toString | upper}}"
----
-kind: source
-spec:
-  name: test2
-  registry: local
-  path: /data/workspaces/gomods/cq-source-file/dist/cq-source-file_linux_amd64_v1/cq-source-file
-  version: v1.0.0
-  tables: 
-    ["*"]
-  destinations:
-    - sqlite
-  spec:
-    file: ./test.csv
-    format: csv
-    separator: ","
-    table: 
-      name: T2    
-      filter: _.color not startsWith 'b'
-      columns:
-        - name: color
+        - name: sAMAccountName
           type: string
-          key: true
-          unique: true
-          notnull: true
-        - name: value
+        - name: objectSID
           type: string
-          unique: true
-          notnull: true
-        - name: optimized
-          type: boolean
-          notnull: true
-        - name: count
-          type: integer
-          notnull: true
+
+
+        - name: displayName
+          type: string
+        - name: givenName
+          type: string
+        - name: sn
+          type: string
+        - name: postOfficeBox
+          type: string
+
+        - name: mail
+          type: string
+        - name: telephoneNumber
+          type: string
+        - name: mobile
+          type: string
+
+        - name: title
+          type: string
+        - name: company
+          type: string
+        - name: description
+          type: string
+        - name: department
+          type: string
+        - name: postalCode 
+          type: string
+        - name: manager
+          type: string
+        - name: directReports
+          type: string
+    # relations:
+    #   - name: T1_UPPER
+    #     filter: _.color startsWith 'blu'
+    #     columns:
+    #       - name: upper_color
+    #         type: string
+    #         key: true
+    #         unique: true
+    #         notnull: true
+    #         transform: "{{index .Row \"color\" | toString | upper}}"
+    #       - name: upper_value
+    #         type: string
+    #         transform: "{{index .Row \"value\" | toString | upper}}"
+    #   - name: T1_UPPER
+    #     filter: _.color startsWith 'bla'
+    #     columns:
+    #       - name: upper_color
+    #         type: string
+    #         key: true
+    #         unique: true
+    #         notnull: true
+    #         transform: "{{index .Row \"color\" | toString | upper}}"
+    #       - name: upper_value
+    #         type: string
+    #         transform: "{{index .Row \"value\" | toString | upper}}"
 ---
 kind: destination
 spec:
