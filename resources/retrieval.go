@@ -154,12 +154,34 @@ func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Co
 
 		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name). /*.Str("attribute", attribute)*/ Str("entry", format.ToJSON(entry)).Msg("retrieving column for table")
 
-		value := strings.Join(entry.Attributes[c.Name], ",")
+		var value any
+		for name := range entry.Attributes {
+			if strings.EqualFold(c.Name, name) {
+				values := entry.Attributes[name]
+				switch c.Type {
+				case schema.TypeString:
+					switch len(values) {
+					case 0:
+						value = nil
+					case 1:
+						value = values[0]
+					default:
+						value = fmt.Sprintf("%v", entry.Attributes[name])
+					}
+				case schema.TypeStringArray:
+					value = values
+				default:
+					client.Logger.Error().Int("type", int(c.Type)).Msg("unsupported field type")
+				}
+				break
+			}
+		}
+
 		client.Logger.Debug().Str("value", fmt.Sprintf("%v", value)).Str("type", fmt.Sprintf("%T", value)).Msg("checking value type")
 
 		// now apply the transform if it is available
 		for _, spec := range table.Columns {
-			if spec.Name == c.Name && spec.Template != nil {
+			if strings.EqualFold(spec.Name, c.Name) && spec.Template != nil {
 				client.Logger.Debug().Msg("applying transform...")
 				var buffer bytes.Buffer
 				target := struct {
