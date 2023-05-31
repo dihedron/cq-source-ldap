@@ -96,7 +96,6 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 	// like Active Directory SIDs are binary encodings that need specific parsing
 	// to be rendered as human-readable strings).
 	columns := []schema.Column{}
-	//attributes := map[string]AttributeInfo{}
 
 	for _, c := range table.Columns {
 		c := c
@@ -180,7 +179,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 				return fmt.Sprintf("%v", v)
 			},
 		}
-		if filter, err = expr.Compile(*table.Filter, expr.Env(env), expr.AsBool(), expr.Operator("->", "Extract")); err != nil {
+		if filter, err = expr.Compile(*table.Filter, expr.Env(env), expr.AsBool(), expr.Operator(".", "GetAttribute")); err != nil {
 			filter = nil // just make sure
 			logger.Error().Err(err).Str("table", table.Name).Str("filter", *table.Filter).Msg("error compiling expression evaluator")
 		} else {
@@ -194,7 +193,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 
 type Env map[string]any
 
-func (Env) Extract(entry map[string]any, attribute string) any {
+func (Env) GetAttribute(entry map[string]any, attribute string) any {
 	for name := range entry {
 		if strings.EqualFold(name, attribute) {
 			return entry[name]

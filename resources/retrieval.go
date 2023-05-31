@@ -15,6 +15,8 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
+const PagingSize = 100
+
 type Entry struct {
 	DN         string              `json:"dn" yaml:"dn"`
 	Attributes map[string][]string `json:"attributes" yaml:"attributes"`
@@ -54,7 +56,7 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 		}
 		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, filter, attributes, []ldap.Control{})
 
-		results, err := client.Client.Search(request)
+		results, err := client.Client.SearchWithPaging(request, PagingSize)
 		if err != nil {
 			client.Logger.Error().Err(err).Msg("error querying LDAP server")
 			return fmt.Errorf("failed to query LDAP: %w", err)
@@ -81,9 +83,10 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 
 			accepted := true
 			if evaluator != nil {
+				client.Logger.Debug().Msg("evaluator is not nil")
 				accepted = false
 				env := Env{
-					"_": entry,
+					"_": entry.Attributes,
 				}
 
 				if output, err := expr.Run(evaluator, env); err != nil {
@@ -92,6 +95,8 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 					client.Logger.Debug().Any("output", output).Msg("received output")
 					accepted = output.(bool)
 				}
+			} else {
+				client.Logger.Warn().Msg("evaluator is nil")
 			}
 
 			if accepted {
@@ -115,15 +120,15 @@ func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx conte
 
 		// grab the parent row and use it to extract the
 		// columns that go into the child relation
-		row := parent.Item.(map[string]any)
+		entry := parent.Item.(map[string]any)
 
-		client.Logger.Debug().Str("table", table.Name).Str("row", format.ToJSON(row)).Msg("fetching data from parent...")
+		client.Logger.Debug().Str("table", table.Name).Str("entry", format.ToJSON(entry)).Msg("fetching data from parent...")
 
 		accepted := true
 		if admitter != nil {
 			accepted = false
-			env := map[string]any{
-				"_": row,
+			env := Env{
+				"_": entry,
 			}
 
 			if output, err := expr.Run(admitter, env); err != nil {
@@ -136,13 +141,13 @@ func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx conte
 
 		if accepted {
 			if admitter != nil {
-				client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(row)).Msg("accepting row")
+				client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(entry)).Msg("accepting entry")
 			} else {
-				client.Logger.Debug().Str("row", format.ToJSON(row)).Msg("passing on row")
+				client.Logger.Debug().Str("row", format.ToJSON(entry)).Msg("passing on row")
 			}
-			res <- row
+			res <- entry
 		} else {
-			client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(row)).Msg("rejecting row")
+			client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(entry)).Msg("rejecting entry")
 		}
 
 		return nil
