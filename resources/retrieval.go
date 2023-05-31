@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"text/template"
 
 	"github.com/antonmedv/expr"
+	"github.com/antonmedv/expr/vm"
 	"github.com/cloudquery/plugin-sdk/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-source-ldap/client"
@@ -23,7 +25,7 @@ type Entry struct {
 // encodes the information as a map[string]any per row and returns it; fetchColumn
 // knows how to pick the data out of this map and set it into the resource being
 // returned to ClouqQuery.
-func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)
@@ -44,7 +46,11 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 		// prepare the set of attributes (columns) to retrieve
 		attributes := []string{}
 		for _, c := range table.Columns {
-			attributes = append(attributes, c.Name)
+			if c.Attribute != nil {
+				attributes = append(attributes, *c.Attribute)
+			} else {
+				attributes = append(attributes, c.Name)
+			}
 		}
 		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, filter, attributes, []ldap.Control{})
 
@@ -74,13 +80,13 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 			}
 
 			accepted := true
-			if client.Specs.Table.Evaluator != nil {
+			if evaluator != nil {
 				accepted = false
-				env := map[string]any{
+				env := Env{
 					"_": entry,
 				}
 
-				if output, err := expr.Run(client.Specs.Table.Evaluator, env); err != nil {
+				if output, err := expr.Run(evaluator, env); err != nil {
 					client.Logger.Error().Err(err).Msg("error running evaluator")
 				} else {
 					client.Logger.Debug().Any("output", output).Msg("received output")
@@ -102,7 +108,7 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 	}
 }
 
-func fetchRelationData(table *client.Table, attributes map[string]string) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)
@@ -114,13 +120,13 @@ func fetchRelationData(table *client.Table, attributes map[string]string) func(c
 		client.Logger.Debug().Str("table", table.Name).Str("row", format.ToJSON(row)).Msg("fetching data from parent...")
 
 		accepted := true
-		if table.Evaluator != nil {
+		if admitter != nil {
 			accepted = false
 			env := map[string]any{
 				"_": row,
 			}
 
-			if output, err := expr.Run(table.Evaluator, env); err != nil {
+			if output, err := expr.Run(admitter, env); err != nil {
 				client.Logger.Error().Err(err).Msg("error running evaluator")
 			} else {
 				client.Logger.Debug().Any("output", output).Msg("received output")
@@ -129,7 +135,7 @@ func fetchRelationData(table *client.Table, attributes map[string]string) func(c
 		}
 
 		if accepted {
-			if table.Filter != nil && table.Evaluator != nil {
+			if admitter != nil {
 				client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(row)).Msg("accepting row")
 			} else {
 				client.Logger.Debug().Str("row", format.ToJSON(row)).Msg("passing on row")
@@ -145,18 +151,19 @@ func fetchRelationData(table *client.Table, attributes map[string]string) func(c
 
 // fetchColumn picks the value under the right key from the map[string]any
 // and sets it into the resource being returned to CloudQuery.
-func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
+func fetchColumn(table *client.Table, name string, transform *template.Template, attributeName string, attributeType AttributeType) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 		client := meta.(*client.Client)
 		entry := resource.Item.(*Entry)
 		// client.Logger.Debug().Str("resource", format.ToJSON(resource)).Str("column", format.ToJSON(c)).Str("item type", fmt.Sprintf("%T", resource.Item)).Msg("fetching column...")
 
-		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name). /*.Str("attribute", attribute)*/ Str("entry", format.ToJSON(entry)).Msg("retrieving column for table")
+		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name).Str("attribute", attributeName).Str("entry", format.ToJSON(entry)).Msg("retrieving column for table")
 
 		var value any
+	loop:
 		for name := range entry.Attributes {
-			if strings.EqualFold(c.Name, name) {
+			if strings.EqualFold(name, attributeName) {
 				values := entry.Attributes[name]
 				switch c.Type {
 				case schema.TypeString:
@@ -173,7 +180,7 @@ func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Co
 				default:
 					client.Logger.Error().Int("type", int(c.Type)).Msg("unsupported field type")
 				}
-				break
+				break loop
 			}
 		}
 
@@ -181,7 +188,7 @@ func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Co
 
 		// now apply the transform if it is available
 		for _, spec := range table.Columns {
-			if strings.EqualFold(spec.Name, c.Name) && spec.Template != nil {
+			if strings.EqualFold(spec.Name, c.Name) && transform != nil {
 				client.Logger.Debug().Msg("applying transform...")
 				var buffer bytes.Buffer
 				target := struct {
@@ -195,7 +202,7 @@ func fetchColumn(table *client.Table /*, attribute string*/) func(ctx context.Co
 					Type:       c.Type,
 					Attributes: entry.Attributes,
 				}
-				if err := spec.Template.Execute(&buffer, target); err != nil {
+				if err := transform.Execute(&buffer, target); err != nil {
 					client.Logger.Error().Err(err).Any("value", value).Str("transform", *spec.Transform).Any("entry", entry).Msg("error applying transform")
 					return err
 				}
