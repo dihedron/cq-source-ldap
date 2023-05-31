@@ -22,6 +22,7 @@ _test/cloudquery
 _test/*.log
 _test/*.sqlite
 _test/.env
+_test/internal.yaml
 
 .DS_Store
 
