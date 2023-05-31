@@ -17,54 +17,50 @@ spec:
     query:
       basedn: ${LDAP_BASEDN}
       filter: (&(objectclass=organizationalPerson)(cn=D*))
+      #filter: (objectclass=organizationalPerson)
       scope: subtree
     table: 
       name: USERS
-      #filter: _.attributes.cn startsWith 'D'
+      filter: _.cn[0] startsWith 'D0'
       columns:
-        - name: dn
-          type: string
+        - name: distinguished_name
+          attribute: dn
+          type: 
+            from: string
+            into: string
           key: true
           unique: true
           notnull: true
-        - name: cn
-          type: string
-        - name: sAMAccountName
-          type: string
-        - name: objectSID
-          type: string
-
-
-        - name: displayName
-          type: string
-        - name: givenName
-          type: string
-        - name: sn
-          type: string
-        - name: postOfficeBox
-          type: string
-
-        - name: mail
-          type: string
-        - name: telephoneNumber
-          type: string
-        - name: mobile
-          type: string
-
-        - name: title
-          type: string
-        - name: company
-          type: string
-        - name: description
-          type: string
-        - name: department
-          type: string
-        - name: postalCode 
-          type: string
+        - name: common_name
+          attribute: cn
+          type: 
+            from: string
+            into: string
+        - name: logon_name
+          attribute: sAMAccountName
+          type: 
+            from: string
+            into: string
+        - name: sid
+          attribute: objectSID
+          type:  
+            from: sid
+            into: string
+        - name: full_name
+          attribute: displayName
+          type: 
+            from: string
+            into: string
+        - name: first_name
+          attribute: givenName
+        - name: family_name
+          attribute: sn
         - name: manager
-          type: string
-        - name: directReports
-          type: string
+        - name: reports
+          attribute: directReports
+          type: 
+            from: "[]string"
+            into: "[]string"
     # relations:
     #   - name: T1_UPPER
     #     filter: _.color startsWith 'blu'
