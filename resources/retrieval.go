@@ -17,11 +17,6 @@ import (
 
 const PagingSize = 100
 
-type Entry struct {
-	DN         string              `json:"dn" yaml:"dn"`
-	Attributes map[string][]string `json:"attributes" yaml:"attributes"`
-}
-
 // fetchTableData reads the main table's data by reading it from the input file and
 // unmarshallilng it into a set of rows using format-specific mechanisms, then
 // encodes the information as a map[string]any per row and returns it; fetchColumn
@@ -67,18 +62,14 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 		for _, result := range results.Entries {
 			result := result
 
-			// transform the entry into a map
-			entry := &Entry{
-				DN: result.DN,
-				Attributes: map[string][]string{
-					"dn": {
-						result.DN,
-					},
+			// collect all the entry attributes into a map
+			attributes := map[string][]string{
+				"dn": {
+					result.DN,
 				},
 			}
 			for _, attribute := range result.Attributes {
-				//entry.Attributes[strings.ToLower(attribute.Name)] = attribute.Values
-				entry.Attributes[attribute.Name] = attribute.Values
+				attributes[attribute.Name] = attribute.Values
 			}
 
 			accepted := true
@@ -86,7 +77,7 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 				client.Logger.Debug().Msg("evaluator is not nil")
 				accepted = false
 				env := Env{
-					"_": entry.Attributes,
+					"_": attributes,
 				}
 
 				if output, err := expr.Run(evaluator, env); err != nil {
@@ -101,11 +92,11 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 
 			if accepted {
 				//client.Logger.Debug().Str("filter", *table.Filter).Str("entry", format.ToJSON(entry)).Msg("accepting entry")
-				client.Logger.Debug().Str("entry", format.ToJSON(entry)).Msg("accepting entry")
-				res <- entry
+				client.Logger.Debug().Str("attributes", format.ToJSON(attributes)).Msg("accepting entry")
+				res <- attributes
 			} else {
 				//client.Logger.Debug().Str("filter", *table.Filter).Str("entry", format.ToJSON(entry)).Msg("rejecting entry")
-				client.Logger.Debug().Str("entry", format.ToJSON(entry)).Msg("rejecting entry")
+				client.Logger.Debug().Str("attributes", format.ToJSON(attributes)).Msg("rejecting entry")
 			}
 		}
 
@@ -160,16 +151,15 @@ func fetchColumn(table *client.Table, name string, transform *template.Template,
 
 	return func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 		client := meta.(*client.Client)
-		entry := resource.Item.(*Entry)
-		// client.Logger.Debug().Str("resource", format.ToJSON(resource)).Str("column", format.ToJSON(c)).Str("item type", fmt.Sprintf("%T", resource.Item)).Msg("fetching column...")
+		attributes := resource.Item.(map[string][]string)
 
-		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name).Str("attribute", attributeName).Str("entry", format.ToJSON(entry)).Msg("retrieving column for table")
+		client.Logger.Debug().Str("table", table.Name).Str("column", c.Name).Str("attribute", attributeName).Str("entry", format.ToJSON(attributes)).Msg("retrieving column for table")
 
 		var value any
 	loop:
-		for name := range entry.Attributes {
+		for name := range attributes {
 			if strings.EqualFold(name, attributeName) {
-				values := entry.Attributes[name]
+				values := attributes[name]
 				switch c.Type {
 				case schema.TypeString:
 					switch len(values) {
@@ -178,7 +168,7 @@ func fetchColumn(table *client.Table, name string, transform *template.Template,
 					case 1:
 						value = values[0]
 					default:
-						value = fmt.Sprintf("%v", entry.Attributes[name])
+						value = fmt.Sprintf("%v", attributes[name])
 					}
 				case schema.TypeStringArray:
 					value = values
@@ -205,10 +195,10 @@ func fetchColumn(table *client.Table, name string, transform *template.Template,
 					Name:       c.Name,
 					Value:      value,
 					Type:       c.Type,
-					Attributes: entry.Attributes,
+					Attributes: attributes,
 				}
 				if err := transform.Execute(&buffer, target); err != nil {
-					client.Logger.Error().Err(err).Any("value", value).Str("transform", *spec.Transform).Any("entry", entry).Msg("error applying transform")
+					client.Logger.Error().Err(err).Any("value", value).Str("transform", *spec.Transform).Any("attributes", attributes).Msg("error applying transform")
 					return err
 				}
 				value = buffer.String()
