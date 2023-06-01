@@ -22,7 +22,7 @@ const PagingSize = 100
 // encodes the information as a map[string]any per row and returns it; fetchColumn
 // knows how to pick the data out of this map and set it into the resource being
 // returned to ClouqQuery.
-func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchTableData(table *client.MainTable, evaluator *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)

@@ -16,18 +16,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// type Env struct {
-// 	Row map[string]any `expr:"row"`
-// }
-
-// GetTable uses data in the spec section of the client configuration to
-// dynamically build the information about the columns being imported.
+// GetDynamicTables uses data in the spec section of the client configuration to
+// dynamically build the information about the entity attributes being imported
+// into columns.
 func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Tables, error) {
 	client := meta.(*client.Client)
 
 	// get the table columns and populate the admission filter
 	// for the main table
-	tableColumns, tableFilter, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table)
+	tableColumns, tableFilter, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table.Table)
 	if err != nil {
 		client.Logger.Error().Err(err).Str("table", client.Specs.Table.Name).Msg("error getting table column schema and attributes")
 		return nil, err
@@ -36,7 +33,7 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 	// now loop over and add relations
 	relations := []*schema.Table{}
 	client.Logger.Debug().Str("table", client.Specs.Table.Name).Msg("adding relations...")
-	for _, relation := range client.Specs.Relations {
+	for _, relation := range client.Specs.Table.Relations {
 
 		relation := relation
 

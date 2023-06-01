@@ -21,16 +21,20 @@ type Table struct {
 	Description *string   `json:"description,omitempty" yaml:"description,omitempty"`
 	Filter      *string   `json:"filter,omitempty" yaml:"filter,omitempty"`
 	Columns     []*Column `json:"columns,omitempty" yaml:"columns,omitempty"`
-	// Evaluator   *vm.Program `json:"-,omitempty" yaml:"-,omitempty"`
 }
-type Spec struct {
-	Endpoint  string  `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
-	Username  string  `json:"username,omitempty" yaml:"username,omitempty"`
-	Password  string  `json:"password,omitempty" yaml:"password,omitempty"`
-	SkipTLS   bool    `json:"skiptls,omitempty" yaml:"skiptls,omitempty"`
-	Query     Query   `json:"query,omitempty" yaml:"query,omitempty"`
-	Table     Table   `json:"table,omitempty" yaml:"table,omitempty"`
+
+type MainTable struct {
+	Table
 	Relations []Table `json:"relations,omitempty" yaml:"relations,omitempty"`
+}
+
+type Spec struct {
+	Endpoint string    `json:"endpoint,omitempty" yaml:"endpoint,omitempty"`
+	Username string    `json:"username,omitempty" yaml:"username,omitempty"`
+	Password string    `json:"password,omitempty" yaml:"password,omitempty"`
+	SkipTLS  bool      `json:"skiptls,omitempty" yaml:"skiptls,omitempty"`
+	Query    Query     `json:"query,omitempty" yaml:"query,omitempty"`
+	Table    MainTable `json:"table,omitempty" yaml:"table,omitempty"`
 }
 
 type Query struct {
