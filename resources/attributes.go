@@ -15,14 +15,14 @@ const (
 
 func getAttributeName(c *client.Column) string {
 	if c.Attribute != nil {
-		return *c.Attribute
+		return c.Attribute.Name
 	}
 	return c.Name
 }
 
 func getAttributeType(c *client.Column) AttributeType {
-	if c.Type != nil && c.Type.From != nil {
-		switch *c.Type.From {
+	if c.Attribute != nil && c.Attribute.Type != nil {
+		switch *c.Attribute.Type {
 		case "string":
 			return AttributeTypeString
 		case "integer", "int":

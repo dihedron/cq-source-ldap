@@ -49,7 +49,7 @@ func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context
 		attributes := []string{}
 		for _, c := range table.Columns {
 			if c.Attribute != nil {
-				attributes = append(attributes, *c.Attribute)
+				attributes = append(attributes, c.Attribute.Name)
 			} else {
 				attributes = append(attributes, c.Name)
 			}

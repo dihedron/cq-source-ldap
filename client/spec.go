@@ -1,19 +1,19 @@
 package client
 
-type Type struct {
-	From *string `json:"from,omitempty" yaml:"from,omitempty"`
-	Into *string `json:"into,omitempty" yaml:"into,omitempty"`
+type Attribute struct {
+	Name string  `json:"name,omitempty" yaml:"name,omitempty"`
+	Type *string `json:"type,omitempty" yaml:"type,omitempty"`
 }
 
 type Column struct {
-	Name        string  `json:"name,omitempty" yaml:"name,omitempty"`
-	Attribute   *string `json:"attribute,omitempty" yaml:"attribute,omitempty"` // is absent, we use the name
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-	Type        *Type   `json:"type,omitempty" yaml:"type,omitempty"`
-	Key         bool    `json:"key,omitempty" yaml:"pk,omitempty"`
-	Unique      bool    `json:"unique,omitempty" yaml:"unique,omitempty"`
-	NotNull     bool    `json:"notnull,omitempty" yaml:"notnull,omitempty"`
-	Transform   *string `json:"transform,omitempty" yaml:"transform,omitempty"`
+	Name        string     `json:"name,omitempty" yaml:"name,omitempty"`
+	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Type        *string    `json:"type,omitempty" yaml:"type,omitempty"`
+	Attribute   *Attribute `json:"attribute,omitempty" yaml:"attribute,omitempty"` // is absent, we use the name
+	Key         bool       `json:"key,omitempty" yaml:"pk,omitempty"`
+	Unique      bool       `json:"unique,omitempty" yaml:"unique,omitempty"`
+	NotNull     bool       `json:"notnull,omitempty" yaml:"notnull,omitempty"`
+	Transform   *string    `json:"transform,omitempty" yaml:"transform,omitempty"`
 }
 
 type Table struct {

@@ -128,19 +128,15 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		}
 		// apply defaults if necessary
 		if c.Type == nil {
-			c.Type = &client.Type{
-				From: pointer.To("string"),
-				Into: pointer.To("string"),
-			}
-		} else {
-			if c.Type.From == nil {
-				c.Type.From = pointer.To("string")
-			}
-			if c.Type.Into == nil {
-				c.Type.Into = pointer.To("string")
+			c.Type = pointer.To("string")
+		}
+		if c.Attribute == nil {
+			c.Attribute = &client.Attribute{
+				Name: c.Name,
+				Type: pointer.To("string"),
 			}
 		}
-		switch strings.ToLower(*c.Type.Into) {
+		switch strings.ToLower(*c.Type) {
 		case "string":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type string")
 			column.Type = schema.TypeString
