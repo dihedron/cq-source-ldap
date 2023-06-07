@@ -22,7 +22,7 @@ const PagingSize = 100
 // encodes the information as a map[string]any per row and returns it; fetchColumn
 // knows how to pick the data out of this map and set it into the resource being
 // returned to ClouqQuery.
-func fetchTableData(table *client.MainTable, evaluator *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchTableData(table *client.Table, evaluator *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
 		client := meta.(*client.Client)
@@ -47,17 +47,6 @@ func fetchTableData(table *client.MainTable, evaluator *vm.Program) func(ctx con
 				attributes = append(attributes, c.Attribute.Name)
 			} else {
 				attributes = append(attributes, c.Name)
-			}
-		}
-
-		// now add the attributes in the relations
-		for _, relation := range table.Relations {
-			for _, c := range relation.Columns {
-				if c.Attribute != nil {
-					attributes = append(attributes, c.Attribute.Name)
-				} else {
-					attributes = append(attributes, c.Name)
-				}
 			}
 		}
 
@@ -116,50 +105,9 @@ func fetchTableData(table *client.MainTable, evaluator *vm.Program) func(ctx con
 	}
 }
 
-func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
-
-	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
-		client := meta.(*client.Client)
-
-		// grab the parent row and use it to extract the
-		// columns that go into the child relation
-		entry := parent.Item.(map[string][]string)
-
-		client.Logger.Debug().Str("table", table.Name).Str("entry", format.ToJSON(entry)).Msg("fetching data from parent...")
-
-		accepted := true
-		if admitter != nil {
-			accepted = false
-			env := Env{
-				"_": entry,
-			}
-
-			if output, err := expr.Run(admitter, env); err != nil {
-				client.Logger.Error().Err(err).Msg("error running evaluator")
-			} else {
-				client.Logger.Debug().Any("output", output).Msg("received output")
-				accepted = output.(bool)
-			}
-		}
-
-		if accepted {
-			if admitter != nil {
-				client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(entry)).Msg("accepting entry")
-			} else {
-				client.Logger.Debug().Str("row", format.ToJSON(entry)).Msg("passing on row")
-			}
-			res <- entry
-		} else {
-			client.Logger.Debug().Str("filter", *table.Filter).Str("row", format.ToJSON(entry)).Msg("rejecting entry")
-		}
-
-		return nil
-	}
-}
-
 // fetchColumn picks the value under the right key from the map[string]any
 // and sets it into the resource being returned to CloudQuery.
-func fetchColumn(table *client.Table, name string, transform *template.Template, attributeName string, attributeType AttributeType, split bool) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
+func fetchColumn(table *client.Table, name string, transform *template.Template, attributeName string, attributeType AttributeType) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 		client := meta.(*client.Client)

@@ -24,37 +24,10 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 
 	// get the table columns and populate the admission filter
 	// for the main table
-	tableColumns, tableFilter, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table.Table)
+	tableColumns, tableFilter, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table)
 	if err != nil {
 		client.Logger.Error().Err(err).Str("table", client.Specs.Table.Name).Msg("error getting table column schema and attributes")
 		return nil, err
-	}
-
-	// now loop over and add relations
-	relations := []*schema.Table{}
-	client.Logger.Debug().Str("table", client.Specs.Table.Name).Msg("adding relations...")
-	for _, relation := range client.Specs.Table.Relations {
-
-		relation := relation
-
-		relationColumns, relationFilter, err := buildTableColumnsSchema(client.Logger, &relation)
-		if err != nil {
-			client.Logger.Error().Err(err).Str("table", relation.Name).Msg("error getting relation column schema")
-			return nil, err
-		}
-
-		client.Logger.Debug().Str("relation", relation.Name).Msg("adding relation to schema")
-
-		if relation.Description == nil {
-			relation.Description = pointer.To(fmt.Sprintf("Table %q", relation.Name))
-		}
-
-		relations = append(relations, &schema.Table{
-			Name:        relation.Name,
-			Description: *relation.Description,
-			Resolver:    fetchRelationData(&relation, relationFilter),
-			Columns:     relationColumns,
-		})
 	}
 
 	// now assemble the main table with its relations
@@ -70,7 +43,6 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 			Description: *client.Specs.Table.Description,
 			Resolver:    fetchTableData(&client.Specs.Table, tableFilter),
 			Columns:     tableColumns,
-			Relations:   relations,
 		},
 	}, nil
 }
@@ -116,7 +88,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		column := schema.Column{
 			Name:        c.Name,
 			Description: *c.Description,
-			Resolver:    fetchColumn(table, c.Name, transform, getAttributeName(c), getAttributeType(c), c.Split),
+			Resolver:    fetchColumn(table, c.Name, transform, getAttributeName(c), getAttributeType(c)),
 			CreationOptions: schema.ColumnCreationOptions{
 				PrimaryKey: c.Key,
 				Unique:     c.Unique,
