@@ -9,3 +9,7 @@ build:
 .PHONY: reset
 reset:
 	rm -rf *.log *.sqlite
+
+.PHONY: internal
+internal: build
+	cloudquery sync internal.yaml --log-level=debug --telemetry-level=none

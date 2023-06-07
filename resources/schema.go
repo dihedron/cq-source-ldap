@@ -116,7 +116,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		column := schema.Column{
 			Name:        c.Name,
 			Description: *c.Description,
-			Resolver:    fetchColumn(table, c.Name, transform, getAttributeName(c), getAttributeType(c)),
+			Resolver:    fetchColumn(table, c.Name, transform, getAttributeName(c), getAttributeType(c), c.Split),
 			CreationOptions: schema.ColumnCreationOptions{
 				PrimaryKey: c.Key,
 				Unique:     c.Unique,

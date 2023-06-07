@@ -9,11 +9,12 @@ type Column struct {
 	Name        string     `json:"name,omitempty" yaml:"name,omitempty"`
 	Description *string    `json:"description,omitempty" yaml:"description,omitempty"`
 	Type        *string    `json:"type,omitempty" yaml:"type,omitempty"`
-	Attribute   *Attribute `json:"attribute,omitempty" yaml:"attribute,omitempty"` // is absent, we use the name
+	Attribute   *Attribute `json:"attribute,omitempty" yaml:"attribute,omitempty"` // is absent, we use the name and string
 	Key         bool       `json:"key,omitempty" yaml:"pk,omitempty"`
 	Unique      bool       `json:"unique,omitempty" yaml:"unique,omitempty"`
 	NotNull     bool       `json:"notnull,omitempty" yaml:"notnull,omitempty"`
 	Transform   *string    `json:"transform,omitempty" yaml:"transform,omitempty"`
+	Split       *bool      `json:"split,omitempty" yaml:"split,omitempty"` // only relations
 }
 
 type Table struct {

@@ -49,6 +49,18 @@ func fetchTableData(table *client.MainTable, evaluator *vm.Program) func(ctx con
 				attributes = append(attributes, c.Name)
 			}
 		}
+
+		// now add the attributes in the relations
+		for _, relation := range table.Relations {
+			for _, c := range relation.Columns {
+				if c.Attribute != nil {
+					attributes = append(attributes, c.Attribute.Name)
+				} else {
+					attributes = append(attributes, c.Name)
+				}
+			}
+		}
+
 		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, filter, attributes, []ldap.Control{})
 
 		results, err := client.Client.SearchWithPaging(request, PagingSize)
@@ -111,7 +123,7 @@ func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx conte
 
 		// grab the parent row and use it to extract the
 		// columns that go into the child relation
-		entry := parent.Item.(map[string]any)
+		entry := parent.Item.(map[string][]string)
 
 		client.Logger.Debug().Str("table", table.Name).Str("entry", format.ToJSON(entry)).Msg("fetching data from parent...")
 
@@ -147,7 +159,7 @@ func fetchRelationData(table *client.Table, admitter *vm.Program) func(ctx conte
 
 // fetchColumn picks the value under the right key from the map[string]any
 // and sets it into the resource being returned to CloudQuery.
-func fetchColumn(table *client.Table, name string, transform *template.Template, attributeName string, attributeType AttributeType) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
+func fetchColumn(table *client.Table, name string, transform *template.Template, attributeName string, attributeType AttributeType, split bool) func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 
 	return func(ctx context.Context, meta schema.ClientMeta, resource *schema.Resource, c schema.Column) error {
 		client := meta.(*client.Client)
