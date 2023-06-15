@@ -3,16 +3,16 @@ package resources
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"text/template"
 
 	"github.com/Masterminds/sprig"
-	"github.com/antonmedv/expr"
-	"github.com/antonmedv/expr/vm"
 	"github.com/cloudquery/plugin-sdk/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-plugin-utils/pointer"
 	"github.com/dihedron/cq-source-ldap/client"
+	"github.com/dihedron/cq-source-ldap/resources/sid"
 	"github.com/rs/zerolog"
 )
 
@@ -24,7 +24,7 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 
 	// get the table columns and populate the admission filter
 	// for the main table
-	tableColumns, tableFilter, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table)
+	tableColumns, err := buildTableColumnsSchema(client.Logger, &client.Specs.Table)
 	if err != nil {
 		client.Logger.Error().Err(err).Str("table", client.Specs.Table.Name).Msg("error getting table column schema and attributes")
 		return nil, err
@@ -41,46 +41,56 @@ func GetDynamicTables(ctx context.Context, meta schema.ClientMeta) (schema.Table
 		{
 			Name:        client.Specs.Table.Name,
 			Description: *client.Specs.Table.Description,
-			Resolver:    fetchTableData(&client.Specs.Table, tableFilter),
+			Resolver:    fetchTableData(&client.Specs.Table),
 			Columns:     tableColumns,
 		},
 	}, nil
 }
 
-// buildTableColumnsSchema returns the schema definition of the given table's columns
-// and populates the table's Evaluator field if the Filter is not null (side effect).
-// TODO: fix side effect once working
-func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]schema.Column, *vm.Program, error) {
-	var err error
-
-	entry := map[string]any{}
-	// start by looping over the columns definitions and creating the Column schema
-	// object; while looping over the columns, we are also creating a map holding
-	// the column names and an example (zero) value for each column, which we'll use
-	// when initialising the admission filter, which expects to work on a given data
-	// structure when being compiled; moreover, we build a map that allows us to
-	// know which attribute to take to populate each column (since column name and
-	// LDAP attribute names may not be the same, e.g. givenName may be mapped onto
-	// Name and fn onto Surname), and how to extract data from it (e.g. some fields
-	// like Active Directory SIDs are binary encodings that need specific parsing
-	// to be rendered as human-readable strings).
+// buildTableColumnsSchema returns the schema definition of the given table's columns.
+func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]schema.Column, error) {
 	columns := []schema.Column{}
+
+	// prepare the template for value mapping
+	funcMap := sprig.FuncMap()
+	funcMap["toSID"] = func(data []byte) string {
+		// sid conversion function
+		return sid.New(data).String()
+	}
+	funcMap["toStrings"] = func(value any) []string {
+		result := []string{}
+		if reflect.TypeOf(value).Kind() == reflect.Slice {
+			logger.Debug().Msg("type is slice")
+			slice := reflect.ValueOf(value)
+			for i := 0; i < slice.Len(); i++ {
+				switch v := slice.Index(i).Interface().(type) {
+				case string:
+					result = append(result, v)
+				case []byte:
+					result = append(result, string(v))
+				case []string:
+					result = append(result, v...)
+				default:
+					result = append(result, fmt.Sprintf("%v", v))
+				}
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
+		return nil
+	}
 
 	for _, c := range table.Columns {
 		c := c
 		logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("adding column...")
 
-		// prepare the template for value transformation if there is a transform
-		var transform *template.Template
-
-		if c.Transform != nil {
-			transform, err = template.New(c.Name).Funcs(sprig.FuncMap()).Parse(*c.Transform)
-			if err != nil {
-				logger.Error().Err(err).Str("table", table.Name).Str("column", c.Name).Str("transform", *c.Transform).Msg("error parsing column transform")
-				return nil, nil, fmt.Errorf("error parsing transform for column %q: %w", c.Name, err)
-			}
-			logger.Debug().Str("table", table.Name).Str("template", format.ToJSON(transform)).Str("transform", *c.Transform).Msg("template after having parsed transform")
+		mapping, err := template.New(c.Name).Funcs(funcMap).Parse(c.Mapping)
+		if err != nil {
+			logger.Error().Err(err).Str("table", table.Name).Str("column", c.Name).Str("mapping", c.Mapping).Msg("error parsing column mapping")
+			return nil, fmt.Errorf("error parsing transform for column %q: %w", c.Name, err)
 		}
+		logger.Debug().Str("table", table.Name).Str("mapping definition", c.Mapping).Str("mapping kernel", format.ToJSON(mapping)).Msg("mapping parsed")
 
 		if c.Description == nil {
 			c.Description = pointer.To(fmt.Sprintf("The column mapping the %q field from the input data", c.Name))
@@ -88,7 +98,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		column := schema.Column{
 			Name:        c.Name,
 			Description: *c.Description,
-			Resolver:    fetchColumn(table, c.Name, transform, getAttributeName(c), getAttributeType(c)),
+			Resolver:    fetchColumn(table, c.Name, mapping),
 			CreationOptions: schema.ColumnCreationOptions{
 				PrimaryKey: c.Key,
 				Unique:     c.Unique,
@@ -99,70 +109,32 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		if c.Type == nil {
 			c.Type = pointer.To("string")
 		}
-		if c.Attribute == nil {
-			c.Attribute = &client.Attribute{
-				Name: c.Name,
-				Type: pointer.To("string"),
-			}
-		}
 		switch strings.ToLower(*c.Type) {
 		case "string":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type string")
 			column.Type = schema.TypeString
-			entry[c.Name] = ""
-		case "[]string":
+		case "strings":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type []string")
 			column.Type = schema.TypeStringArray
-			entry[c.Name] = []string{}
 		case "integer", "int":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type int")
 			column.Type = schema.TypeInt
-			entry[c.Name] = 0
+		case "integers", "ints":
+			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type []ints")
+			column.Type = schema.TypeIntArray
 		case "boolean", "bool":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type bool")
 			column.Type = schema.TypeBool
-			entry[c.Name] = false
-		case "sid":
-			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type sid")
-			column.Type = schema.TypeString
-			entry[c.Name] = ""
+		case "json":
+			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type json")
+			column.Type = schema.TypeJSON
 		default:
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of unmapped type, assuming string")
 			column.Type = schema.TypeString
-			entry[c.Name] = ""
 		}
 		columns = append(columns, column)
 	}
 
-	// now initialise the filter using the row map that we've populated above;
-	var filter *vm.Program
-	if table.Filter != nil {
-		logger.Debug().Str("table", table.Name).Str("filter", *table.Filter).Str("entry template", format.ToJSON(entry)).Msg("compiling row filter")
-		env := Env{
-			"_": entry,
-			"string": func(v any) string {
-				return fmt.Sprintf("%v", v)
-			},
-		}
-		if filter, err = expr.Compile(*table.Filter, expr.Env(env), expr.AsBool(), expr.Operator(".", "GetAttribute")); err != nil {
-			filter = nil // just make sure
-			logger.Error().Err(err).Str("table", table.Name).Str("filter", *table.Filter).Msg("error compiling expression evaluator")
-		} else {
-			logger.Debug().Str("table", table.Name).Str("filter", *table.Filter).Msg("expression evaluator successfully compiled")
-		}
-	}
-
 	logger.Debug().Str("table", table.Name).Str("columns", format.ToJSON(columns)).Msg("returning columns schema and admission filter")
-	return columns, filter, nil
-}
-
-type Env map[string]any
-
-func (Env) GetAttribute(entry map[string]any, attribute string) any {
-	for name := range entry {
-		if strings.EqualFold(name, attribute) {
-			return entry[name]
-		}
-	}
-	return nil
+	return columns, nil
 }
