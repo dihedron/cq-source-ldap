@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/dihedron/cq-source-ldap/resources/sid"
 	"github.com/rs/zerolog"
 )
 
@@ -51,6 +52,11 @@ func toString(value any) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+func toSID(data []byte) string {
+	// sid conversion function
+	return sid.New(data).String()
 }
 
 func makeLog(logger zerolog.Logger) func(msg string, args ...any) {

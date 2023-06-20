@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/cloudquery/plugin-sdk/schema"
+	"github.com/cloudquery/plugin-sdk/v3/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-source-ldap/client"
 	"github.com/dop251/goja"

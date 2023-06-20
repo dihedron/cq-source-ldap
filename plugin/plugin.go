@@ -1,7 +1,7 @@
 package plugin
 
 import (
-	"github.com/cloudquery/plugin-sdk/plugins/source"
+	"github.com/cloudquery/plugin-sdk/v3/plugins/source"
 	"github.com/dihedron/cq-source-ldap/client"
 	"github.com/dihedron/cq-source-ldap/resources"
 )

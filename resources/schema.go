@@ -7,11 +7,11 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig"
-	"github.com/cloudquery/plugin-sdk/schema"
+	"github.com/apache/arrow/go/v13/arrow"
+	"github.com/cloudquery/plugin-sdk/v3/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-plugin-utils/pointer"
 	"github.com/dihedron/cq-source-ldap/client"
-	"github.com/dihedron/cq-source-ldap/resources/sid"
 	"github.com/rs/zerolog"
 )
 
@@ -52,10 +52,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 
 	// prepare the template for value mapping
 	funcMap := sprig.FuncMap()
-	funcMap["toSID"] = func(data []byte) string {
-		// sid conversion function
-		return sid.New(data).String()
-	}
+	funcMap["toSID"] = toSID
 	funcMap["toStrings"] = toStrings
 
 	for _, c := range table.Columns {
@@ -76,11 +73,15 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 			Name:        c.Name,
 			Description: *c.Description,
 			Resolver:    fetchColumn(table, c.Name, mapping),
-			CreationOptions: schema.ColumnCreationOptions{
-				PrimaryKey: c.Key,
-				Unique:     c.Unique,
-				NotNull:    c.NotNull,
-			},
+			Type:        &arrow.NullType{},
+			PrimaryKey:  c.Key,
+			NotNull:     c.NotNull,
+			Unique:      c.Unique,
+			// CreationOptions: schema.ColumnCreationOptions{
+			// 	PrimaryKey: c.Key,
+			// 	Unique:     c.Unique,
+			// 	NotNull:    c.NotNull,
+			// },
 		}
 		// apply defaults if necessary
 		if c.Type == nil {
@@ -89,25 +90,25 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		switch strings.ToLower(*c.Type) {
 		case "string":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type string")
-			column.Type = schema.TypeString
+			column.Type = &arrow.StringType{}
 		case "strings":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type []string")
-			column.Type = schema.TypeStringArray
+			column.Type = arrow.ListOf(&arrow.StringType{})
 		case "integer", "int":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type int")
-			column.Type = schema.TypeInt
+			column.Type = &arrow.Int32Type{}
 		case "integers", "ints":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type []ints")
-			column.Type = schema.TypeIntArray
+			column.Type = arrow.ListOf(&arrow.Int32Type{})
 		case "boolean", "bool":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type bool")
-			column.Type = schema.TypeBool
+			column.Type = &arrow.BooleanType{}
 		case "json":
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of type json")
-			column.Type = schema.TypeJSON
+			column.Type = &arrow.StringType{}
 		default:
 			logger.Debug().Str("table", table.Name).Str("name", c.Name).Msg("column is of unmapped type, assuming string")
-			column.Type = schema.TypeString
+			column.Type = &arrow.StringType{}
 		}
 		columns = append(columns, column)
 	}
