@@ -11,9 +11,10 @@ type Spec struct {
 
 type Query struct {
 	BaseDN     string   `json:"basedn,omitempty" yaml:"basedn,omitempty"`
-	Filter     string   `json:"filter,omitempty" yaml:"filter,omitempty"`
+	Query      string   `json:"query,omitempty" yaml:"query,omitempty"`
 	Scope      *string  `json:"scope,omitempty" yaml:"scope,omitempty"`
 	Attributes []string `json:"attributes,omitempty" yaml:"attributes,omitempty"`
+	Filter     *string  `json:"filter,omitempty" yaml:"filter,omitempty"`
 }
 
 type Column struct {

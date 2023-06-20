@@ -3,7 +3,6 @@ package resources
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 	"text/template"
 
@@ -57,29 +56,7 @@ func buildTableColumnsSchema(logger zerolog.Logger, table *client.Table) ([]sche
 		// sid conversion function
 		return sid.New(data).String()
 	}
-	funcMap["toStrings"] = func(value any) []string {
-		result := []string{}
-		if reflect.TypeOf(value).Kind() == reflect.Slice {
-			logger.Debug().Msg("type is slice")
-			slice := reflect.ValueOf(value)
-			for i := 0; i < slice.Len(); i++ {
-				switch v := slice.Index(i).Interface().(type) {
-				case string:
-					result = append(result, v)
-				case []byte:
-					result = append(result, string(v))
-				case []string:
-					result = append(result, v...)
-				default:
-					result = append(result, fmt.Sprintf("%v", v))
-				}
-			}
-		}
-		if len(result) > 0 {
-			return result
-		}
-		return nil
-	}
+	funcMap["toStrings"] = toStrings
 
 	for _, c := range table.Columns {
 		c := c

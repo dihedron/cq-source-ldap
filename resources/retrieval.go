@@ -10,6 +10,7 @@ import (
 	"github.com/cloudquery/plugin-sdk/schema"
 	"github.com/dihedron/cq-plugin-utils/format"
 	"github.com/dihedron/cq-source-ldap/client"
+	"github.com/dop251/goja"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -18,14 +19,14 @@ const PagingSize = 100
 // fetchTableData reads the main table's data by performing an LDAP query;
 // the attributes to be retrieved from the query are specified in the Spec.
 // Actual formatting of output values is performed by the fetchColumn function.
-func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, channel chan<- interface{}) error {
 
-	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, res chan<- interface{}) error {
+	return func(ctx context.Context, meta schema.ClientMeta, parent *schema.Resource, channel chan<- interface{}) error {
 		client := meta.(*client.Client)
 		client.Logger.Debug().Str("table", table.Name).Msg("fetching data...")
 
 		baseDN := client.Specs.Query.BaseDN // "DC=example,DC=com"
-		filter := client.Specs.Query.Filter // "(CN=A1234567)"
+		query := client.Specs.Query.Query   // "(CN=A1234567)"
 		scope := ldap.ScopeWholeSubtree
 		if client.Specs.Query.Scope != nil {
 			switch strings.TrimSpace(strings.ToLower(*client.Specs.Query.Scope)) {
@@ -36,7 +37,7 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 			}
 		}
 
-		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, filter, client.Specs.Query.Attributes, []ldap.Control{})
+		request := ldap.NewSearchRequest(baseDN, scope, 0, 0, 0, false, query, client.Specs.Query.Attributes, []ldap.Control{})
 
 		results, err := client.Client.SearchWithPaging(request, PagingSize)
 		if err != nil {
@@ -45,6 +46,25 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 		}
 
 		client.Logger.Debug().Int("entries", len(results.Entries)).Msg("query complete")
+
+		var vm *goja.Runtime
+		var accept goja.Callable
+		if client.Specs.Query.Filter != nil {
+			vm = goja.New()
+			vm.Set("toString", toString)
+			vm.Set("toStrings", toStrings)
+			vm.Set("log", makeLog(client.Logger))
+			// TODO: add further helper functions here
+			if _, err := vm.RunString(*client.Specs.Query.Filter); err != nil {
+				client.Logger.Error().Err(err).Str("filter", *client.Specs.Query.Filter).Msg("error parsing filter")
+				return err
+			}
+			var ok bool
+			if accept, ok = goja.AssertFunction(vm.Get("accept")); !ok {
+				client.Logger.Error().Err(err).Str("filter", *client.Specs.Query.Filter).Msg("no valid definition of 'accept' in filter")
+				return err
+			}
+		}
 
 		for _, result := range results.Entries {
 			result := result
@@ -59,8 +79,26 @@ func fetchTableData(table *client.Table) func(ctx context.Context, meta schema.C
 				attributes[strings.ToLower(attribute.Name)] = attribute.ByteValues
 			}
 
-			client.Logger.Debug().Str("attributes", format.ToJSON(attributes)).Msg("accepting entry")
-			res <- attributes
+			accepted := true
+			if accept != nil {
+				client.Logger.Info().Bytes("cn", attributes["cn"][0]).Msg("running filter against entry")
+				res, err := accept(goja.Undefined(), vm.ToValue(attributes))
+				if err != nil {
+					client.Logger.Error().Err(err).Msg("error running accept on entry")
+					continue
+				}
+				if b := res.ToBoolean(); b {
+					client.Logger.Info().Any("result", res).Msg("filter accepted entry")
+					accepted = true
+				} else {
+					client.Logger.Info().Any("result", res).Msg("filter rejected entry")
+					accepted = false
+				}
+			}
+
+			if accepted {
+				channel <- attributes
+			}
 		}
 
 		return nil

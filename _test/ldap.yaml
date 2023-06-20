@@ -16,7 +16,7 @@ spec:
     skiptls: true
     query:
       basedn: ${LDAP_BASEDN}
-      filter: (objectclass=organizationalPerson)
+      query: (objectclass=organizationalPerson)
       scope: subtree
       attributes:
         - dn              # distinguished name
@@ -31,6 +31,18 @@ spec:
         - mobile          # mobile phone
         - manager         # manager's DN
         - memberOf        # group DNs
+      filter: |
+        // assume all valid user ids are like A1234
+        function accept(attributes) { 
+          const cn = toStrings(attributes.cn);
+          if (cn.length > 0) {
+            const re = /[A-Z]\d{4}/;
+            if (cn[0].match(re)) {
+              return true
+            }
+          }
+          return false;
+        }
     table: 
       name: USERS
       columns:
