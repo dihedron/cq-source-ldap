@@ -16,76 +16,65 @@ spec:
     skiptls: true
     query:
       basedn: ${LDAP_BASEDN}
-      filter: (&(objectclass=organizationalPerson)(cn=D*))
-      #filter: (objectclass=organizationalPerson)
+      query: (objectclass=organizationalPerson)
       scope: subtree
+      attributes:
+        - dn              # distinguished name
+        - cn              # common name
+        - sAMAccountName  # login name
+        - objectSID       # SID (binary)
+        - displayName     # full name
+        - givenName       # first name
+        - sn              # family name
+        - mail            # email
+        - telephoneNumber # phone number
+        - mobile          # mobile phone
+        - manager         # manager's DN
+        - memberOf        # group DNs
+      filter: |
+        // assume all valid user ids are like A1234
+        function accept(attributes) { 
+          const cn = toStrings(attributes.cn);
+          if (cn.length > 0) {
+            const re = /[A-Z]\d{4}/;
+            if (cn[0].match(re)) {
+              return true
+            }
+          }
+          return false;
+        }
     table: 
       name: USERS
-      filter: _.cn[0] startsWith 'D0'
       columns:
         - name: distinguished_name
-          attribute: dn
-          type: 
-            from: string
-            into: string
+          type: string
           key: true
           unique: true
           notnull: true
+          mapping: '{{if index . (lower "dn")}}{{ index . (lower "dn") 0 | toString }}{{end}}'
         - name: common_name
-          attribute: cn
-          type: 
-            from: string
-            into: string
+          mapping: '{{if index . (lower "cn")}}{{ index . (lower "cn") 0 | toString }}{{end}}'
         - name: logon_name
-          attribute: sAMAccountName
-          type: 
-            from: string
-            into: string
+          mapping: '{{if index . (lower "sAMAccountName")}}{{ index . (lower "sAMAccountName") 0 | toString }}{{end}}'
         - name: sid
-          attribute: objectSID
-          type:  
-            from: sid
-            into: string
+          mapping: '{{if index . (lower "objectSID")}}{{ index . (lower "objectSID") 0 | toSID }}{{end}}'
         - name: full_name
-          attribute: displayName
-          type: 
-            from: string
-            into: string
+          mapping: '{{if index . (lower "displayName")}}{{ index . (lower "displayName") 0 | toString }}{{end}}'
         - name: first_name
-          attribute: givenName
+          mapping: '{{if index . (lower "givenName")}}{{ index . (lower "givenName") 0 | toString }}{{end}}'
         - name: family_name
-          attribute: sn
+          mapping: '{{if index . (lower "sn")}}{{ index . (lower "sn") 0 | toString }}{{end}}'
+        - name: email
+          mapping: '{{if index . (lower "mail")}}{{ index . (lower "mail") 0 | toString }}{{end}}'  
+        - name: phone_number
+          mapping: '{{if index . (lower "telephoneNumber")}}{{ index . (lower "telephoneNumber") 0 | toString }}{{end}}'  
+        - name: mobile_number
+          mapping: '{{if index . (lower "mobile")}}{{ index . (lower "mobile") 0 | toString }}{{end}}'  
         - name: manager
-        - name: reports
-          attribute: directReports
-          type: 
-            from: "[]string"
-            into: "[]string"
-    # relations:
-    #   - name: T1_UPPER
-    #     filter: _.color startsWith 'blu'
-    #     columns:
-    #       - name: upper_color
-    #         type: string
-    #         key: true
-    #         unique: true
-    #         notnull: true
-    #         transform: "{{index .Row \"color\" | toString | upper}}"
-    #       - name: upper_value
-    #         type: string
-    #         transform: "{{index .Row \"value\" | toString | upper}}"
-    #   - name: T1_UPPER
-    #     filter: _.color startsWith 'bla'
-    #     columns:
-    #       - name: upper_color
-    #         type: string
-    #         key: true
-    #         unique: true
-    #         notnull: true
-    #         transform: "{{index .Row \"color\" | toString | upper}}"
-    #       - name: upper_value
-    #         type: string
-    #         transform: "{{index .Row \"value\" | toString | upper}}"
+          mapping: '{{if index . (lower "manager")}}{{ index . (lower "manager") 0 | toString }}{{end}}'  
+        - name: groups
+          type: json
+          mapping: '{{ index . (lower "memberOf") | toStrings | toJson }}'  
 ---
 kind: destination
 spec:
